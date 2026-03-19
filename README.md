@@ -1,4 +1,4 @@
-Lab report contains 5 lab tasks those were done by me. Each task demand as follow accordingly:
+The following lab report covers five individual tasks. Each task's requirements are outlined below:
 
 Task 1
 Via the ArduinoIDE use digitalwrite() and blink the onboard LED at 1 Hz. Then use registers to blink the onboard LED at 1 Hz. Estimate and compare the 
