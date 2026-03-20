@@ -1,61 +1,66 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-// Değişkeni kesme içinde kullanacağımız için volatile tanımlıyoruz
-volatile int milisecond = 0; 
+volatile int countdown = 0;
+volatile int debounce_timer = 0; // Yeni basışı engelleme süresi (200 ms)
 
-const int ledPin = 13;   // Mavi kablo
-const int buttonPin = 2;  // Kırmızı kablo
+void setup_system() {
+    cli();
 
-void setup() {
-  pinMode(ledPin, OUTPUT);
-  // INPUT_PULLUP buton boştayken sinyalin '1' kalmasını sağlar
-  pinMode(buttonPin, INPUT_PULLUP); 
+    // 1. Port Ayarları (DDR: Data Direction Register)
+    // LED (PB5 - Pin 13) Çıkış:
+    DDRB |= (1 << DDB5);
+    // Buton (PD2 - Pin 2) Giriş:
+    DDRD &= ~(1 << DDD2);
+    // Pull-up direnci aktif:
+    PORTD |= (1 << PORTD2);
 
-  // --- Timer1 Ayarları (Her 1ms'de bir kesme üretmek için) ---
-  cli();                      // Ayar yaparken kesmeleri durdur
-  TCCR1A = 0;                 // Kayıtçıları sıfırla
-  TCCR1B = 0;
-  TCNT1  = 0;                 
-  
-  // 16MHz işlemci hızıyla 1ms elde etmek için gereken değer
-  OCR1A = 1999; 
-  
-  TCCR1B |= (1 << WGM12);      // CTC Modu aktif
-  TCCR1B |= (1 << CS11);       // 8 bölücü (prescaler)
-  TIMSK1 |= (1 << OCIE1A);     // Zamanlayıcı kesmesini etkinleştir
+    // 2. Timer1 Ayarları (1ms CTC Modu)
+    TCCR1A = 0;
+    TCCR1B = 0;
+    TCNT1  = 0;
+    OCR1A  = 1999; 
+    TCCR1B |= (1 << WGM12);  // CTC Modu
+    TCCR1B |= (1 << CS11);   // Prescaler 8
+    TIMSK1 |= (1 << OCIE1A); // Timer Kesmesi Aktif
 
-  // --- Dış Kesme Ayarı (D2 pini için) ---
-  // FALLING: Butona basılıp sinyal 1'den 0'a düştüğü an tetiklenir
-  attachInterrupt(digitalPinToInterrupt(buttonPin), buttonclicked, FALLING);
-  
-  sei();                      // Kesmeleri başlat
+    // 3. Harici Kesme (External Interrupt - INT0)
+    // EICRA: Kesme tipi (Falling Edge: 10)
+    EICRA |= (1 << ISC01);
+    EICRA &= ~(1 << ISC00);
+    // EIMSK: INT0 kesmesini etkinleştir
+    EIMSK |= (1 << INT0);
+
+    sei();
 }
 
-unsigned long last_click = 0; // Sıçramayı engellemek için zaman tutucu
-
-void buttonclicked() {
-  unsigned long now = millis();
-  
-  // Eğer son basıştan bu yana 200ms geçmediyse bu basışı görmezden gel
-  if (now - last_click > 200) { 
-    digitalWrite(ledPin, HIGH);
-    milisecond = 10;
-    last_click = now; // Zamanı güncelle
-  }
-}
-
-// Zamanlayıcı (Timer1) her 1ms'de bir bu bloğu çalıştırır
-ISR(TIMER1_COMPA_vect) {
-  if (milisecond > 0) {
-    milisecond--;       // Sayacı 1 azalt
-    
-    if (milisecond == 0) {
-      digitalWrite(ledPin, LOW); // 10ms dolunca LED'i söndür
+// Butona basıldığında tetiklenen kesme (INT0)
+ISR(INT0_vect) {
+    // Sadece debounce_timer sıfırlandığında yeni basış kabul et
+    if (debounce_timer == 0) { 
+        PORTB |= (1 << PORTB5); 
+        countdown = 10;         // LED 10ms yansın
+        debounce_timer = 200;   // 200ms boyunca yeni kesme kabul etme
     }
-  }
 }
 
-void loop() {
-  // Ana döngü boş. Her şey arka planda (kesmelerle) halloluyor.
+// Her 1ms'de çalışan Timer kesmesi
+ISR(TIMER1_COMPA_vect) {
+    if (countdown > 0) {
+        countdown--;
+        if (countdown == 0) {
+            PORTB &= ~(1 << PORTB5); // LED LOW (10ms dolunca)
+        }
+    }
+    // Debounce süresini yönet (Her 1ms'de bir azalır)
+    if (debounce_timer > 0) {
+        debounce_timer--;
+    }
+}
+
+int main(void) {
+    setup_system();
+    while (1) {
+        // Döngü tamamen boş
+    }
 }
